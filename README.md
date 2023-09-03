@@ -1,3 +1,21 @@
+# lidar_camera_calib-NonROS
+## How to Build lidar_camera_calib-NonROS
+```
+    mkdir build & cd ./build
+    cmake ..
+    make
+```
+## How to Run lidar_camera_calib-NonROS
+```
+    cd ./build
+    ./lidar_camera_calib PATH_of_calib.yaml
+```
+or
+```
+    cd ./build
+    ./lidar_camera_multi_calib PATH_of_multi_calib.yaml
+```
+--------------------------------------------------------
 # lidar_camera_calib
 **lidar_camera_calib** is a robust, high accuracy extrinsic calibration tool between high resolution LiDAR (e.g. Livox) and camera in targetless environment. Our algorithm can run in both indoor and outdoor scenes, and only requires edge information in the scene. If the scene is suitable, we can achieve pixel-level accuracy similar to or even beyond the target based method.
 <div align="center">
