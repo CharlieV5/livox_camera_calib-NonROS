@@ -7,12 +7,10 @@
 ```
 ## How to Run lidar_camera_calib-NonROS
 ```
-    cd ./build
     ./lidar_camera_calib PATH_of_calib.yaml
 ```
 or
 ```
-    cd ./build
     ./lidar_camera_multi_calib PATH_of_multi_calib.yaml
 ```
 --------------------------------------------------------
