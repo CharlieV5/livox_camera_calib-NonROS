@@ -23,7 +23,7 @@ Calibration::Calibration(const std::string &image_file,
   } else if (image_.type() == CV_8UC3) {
     cv::cvtColor(image_, grey_image_, cv::COLOR_BGR2GRAY);
   } else {
-    std::string msg = "Unsupported image type, please use CV_8UC3 or CV_8UC1"  + "\n";
+    std::string msg = "Unsupported image type, please use CV_8UC3 or CV_8UC1\n";
     printf(msg.c_str());
     exit(-1);
   }
