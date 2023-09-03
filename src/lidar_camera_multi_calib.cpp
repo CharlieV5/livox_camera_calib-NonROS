@@ -1,10 +1,15 @@
 #include "ceres/ceres.h"
-#include "include/common.h"
-#include "include/lidar_camera_calib.hpp"
+#include "common.h"
+#include "Calibration.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <opencv2/core/eigen.hpp>
+#include <pcl/io/pcd_io.h>
+#include <filesystem>
+
+#include "calib_cost.h"
+#include <yaml-cpp/yaml.h>
 
 using namespace std;
 
@@ -30,186 +35,44 @@ Eigen::Vector4d distor;
 Eigen::Vector4d quaternion;
 Eigen::Vector3d transation;
 
-// Normal pnp solution
-class pnp_calib {
-public:
-  pnp_calib(PnPData p) { pd = p; }
-  template <typename T>
-  bool operator()(const T *_q, const T *_t, T *residuals) const {
-    Eigen::Matrix<T, 3, 3> innerT = inner.cast<T>();
-    Eigen::Matrix<T, 4, 1> distorT = distor.cast<T>();
-    Eigen::Quaternion<T> q_incre{_q[3], _q[0], _q[1], _q[2]};
-    Eigen::Matrix<T, 3, 1> t_incre{_t[0], _t[1], _t[2]};
-    Eigen::Matrix<T, 3, 1> p_l(T(pd.x), T(pd.y), T(pd.z));
-    Eigen::Matrix<T, 3, 1> p_c = q_incre.toRotationMatrix() * p_l + t_incre;
-    Eigen::Matrix<T, 3, 1> p_2 = innerT * p_c;
-    T uo = p_2[0] / p_2[2];
-    T vo = p_2[1] / p_2[2];
-    const T &fx = innerT.coeffRef(0, 0);
-    const T &cx = innerT.coeffRef(0, 2);
-    const T &fy = innerT.coeffRef(1, 1);
-    const T &cy = innerT.coeffRef(1, 2);
-    T xo = (uo - cx) / fx;
-    T yo = (vo - cy) / fy;
-    T r2 = xo * xo + yo * yo;
-    T r4 = r2 * r2;
-    T distortion = 1.0 + distorT[0] * r2 + distorT[1] * r4;
-    T xd = xo * distortion + (distorT[2] * xo * yo + distorT[2] * xo * yo) +
-           distorT[3] * (r2 + xo * xo + xo * xo);
-    T yd = yo * distortion + distorT[3] * xo * yo + distorT[3] * xo * yo +
-           distorT[2] * (r2 + yo * yo + yo * yo);
-    T ud = fx * xd + cx;
-    T vd = fy * yd + cy;
-    residuals[0] = ud - T(pd.u);
-    residuals[1] = vd - T(pd.v);
-    return true;
-  }
-  static ceres::CostFunction *Create(PnPData p) {
-    return (
-        new ceres::AutoDiffCostFunction<pnp_calib, 2, 4, 3>(new pnp_calib(p)));
-  }
-
-private:
-  PnPData pd;
-};
-
-// pnp calib with direction vector
-class vpnp_calib {
-public:
-  vpnp_calib(VPnPData p) { pd = p; }
-  template <typename T>
-  bool operator()(const T *_q, const T *_t, T *residuals) const {
-    Eigen::Matrix<T, 3, 3> innerT = inner.cast<T>();
-    Eigen::Matrix<T, 4, 1> distorT = distor.cast<T>();
-    Eigen::Quaternion<T> q_incre{_q[3], _q[0], _q[1], _q[2]};
-    Eigen::Matrix<T, 3, 1> t_incre{_t[0], _t[1], _t[2]};
-    Eigen::Matrix<T, 3, 1> p_l(T(pd.x), T(pd.y), T(pd.z));
-    Eigen::Matrix<T, 3, 1> p_c = q_incre.toRotationMatrix() * p_l + t_incre;
-    Eigen::Matrix<T, 3, 1> p_2 = innerT * p_c;
-    T uo = p_2[0] / p_2[2];
-    T vo = p_2[1] / p_2[2];
-    const T &fx = innerT.coeffRef(0, 0);
-    const T &cx = innerT.coeffRef(0, 2);
-    const T &fy = innerT.coeffRef(1, 1);
-    const T &cy = innerT.coeffRef(1, 2);
-    T xo = (uo - cx) / fx;
-    T yo = (vo - cy) / fy;
-    T r2 = xo * xo + yo * yo;
-    T r4 = r2 * r2;
-    T distortion = 1.0 + distorT[0] * r2 + distorT[1] * r4;
-    T xd = xo * distortion + (distorT[2] * xo * yo + distorT[2] * xo * yo) +
-           distorT[3] * (r2 + xo * xo + xo * xo);
-    T yd = yo * distortion + distorT[3] * xo * yo + distorT[3] * xo * yo +
-           distorT[2] * (r2 + yo * yo + yo * yo);
-    T ud = fx * xd + cx;
-    T vd = fy * yd + cy;
-    if (T(pd.direction(0)) == T(0.0) && T(pd.direction(1)) == T(0.0)) {
-      residuals[0] = ud - T(pd.u);
-      residuals[1] = vd - T(pd.v);
-    } else {
-      residuals[0] = ud - T(pd.u);
-      residuals[1] = vd - T(pd.v);
-      Eigen::Matrix<T, 2, 2> I =
-          Eigen::Matrix<float, 2, 2>::Identity().cast<T>();
-      Eigen::Matrix<T, 2, 1> n = pd.direction.cast<T>();
-      Eigen::Matrix<T, 1, 2> nt = pd.direction.transpose().cast<T>();
-      Eigen::Matrix<T, 2, 2> V = n * nt;
-      V = I - V;
-      Eigen::Matrix<T, 2, 2> R = Eigen::Matrix<float, 2, 2>::Zero().cast<T>();
-      R.coeffRef(0, 0) = residuals[0];
-      R.coeffRef(1, 1) = residuals[1];
-      R = V * R * V.transpose();
-      residuals[0] = R.coeffRef(0, 0);
-      residuals[1] = R.coeffRef(1, 1);
-    }
-    return true;
-  }
-  static ceres::CostFunction *Create(VPnPData p) {
-    return (new ceres::AutoDiffCostFunction<vpnp_calib, 2, 4, 3>(
-        new vpnp_calib(p)));
-  }
-
-private:
-  VPnPData pd;
-};
-
-void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params,
-                double search_resolution, int max_iter) {
-  float match_dis = 25;
-  Eigen::Vector3d fix_adjust_euler(0, 0, 0);
-  for (int n = 0; n < 2; n++)
-    for (int round = 0; round < 3; round++) {
-      Eigen::Matrix3d rot;
-      rot = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
-            Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
-            Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
-      // std::cout << "init rot" << rot << std::endl;
-      float min_cost = 1000;
-      for (int iter = 0; iter < max_iter; iter++) {
-        Eigen::Vector3d adjust_euler = fix_adjust_euler;
-        adjust_euler[round] = fix_adjust_euler[round] +
-                              pow(-1, iter) * int(iter / 2) * search_resolution;
-        Eigen::Matrix3d adjust_rotation_matrix;
-        adjust_rotation_matrix =
-            Eigen::AngleAxisd(adjust_euler[0], Eigen::Vector3d::UnitZ()) *
-            Eigen::AngleAxisd(adjust_euler[1], Eigen::Vector3d::UnitY()) *
-            Eigen::AngleAxisd(adjust_euler[2], Eigen::Vector3d::UnitX());
-        Eigen::Matrix3d test_rot = rot * adjust_rotation_matrix;
-        // std::cout << "adjust_rotation_matrix " << adjust_rotation_matrix
-        //           << std::endl;
-        Eigen::Vector3d test_euler = test_rot.eulerAngles(2, 1, 0);
-        // std::cout << "test euler: " << test_euler << std::endl;
-        Vector6d test_params;
-        test_params << test_euler[0], test_euler[1], test_euler[2],
-            calib_params[3], calib_params[4], calib_params[5];
-        std::vector<VPnPData> pnp_list;
-        for (size_t i = 0; i < calibs.size(); i++)
-          calibs[i].buildVPnp(test_params, match_dis, false,
-                              calibs[i].rgb_egde_cloud_,
-                              calibs[i].plane_line_cloud_, pnp_list);
-        float cost = 0;
-        for (size_t i = 0; i < calibs.size(); i++)
-          cost += (calibs[i].plane_line_cloud_->size() - pnp_list.size()) *
-                  1.0 / calibs[i].plane_line_cloud_->size();
-        std::cout << "n " << n << " round " << round << " iter " << iter
-                  << " cost:" << cost << std::endl;
-        if (cost < min_cost) {
-          std::cout << "Rough calibration min cost:" << cost << std::endl;
-          min_cost = cost;
-          calib_params[0] = test_params[0];
-          calib_params[1] = test_params[1];
-          calib_params[2] = test_params[2];
-          calibs[0].buildVPnp(calib_params, match_dis, true,
-                              calibs[0].rgb_egde_cloud_,
-                              calibs[0].plane_line_cloud_, pnp_list);
-          cv::Mat projection_img = calibs[0].getProjectionImg(calib_params);
-          cv::imshow("Rough Optimization", projection_img);
-          cv::waitKey(50);
-        }
-      }
-    }
-}
+void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params, double search_resolution, int max_iter);
 
 int main(int argc, char **argv) {
-  ros::init(argc, argv, "lidarCamCalib");
-  ros::NodeHandle nh;
-  ros::Rate loop_rate(0.1);
+    
+  string yaml_file = argv[1];
+  //string yaml_file = "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/multi_calib.yaml";
+  auto yaml = YAML::LoadFile(yaml_file);
+  try
+  {
+    image_path = yaml["common"]["image_path"].as<string>();
+    pcd_path = yaml["common"]["pcd_path"].as<string>();
 
-  nh.param<string>("common/image_path", image_path, "");
-  nh.param<string>("common/pcd_path", pcd_path, "");
-  nh.param<string>("common/result_path", result_path, "");
-  nh.param<int>("common/data_num", data_num, 1);
-  nh.param<vector<double>>("camera/camera_matrix", camera_matrix,
-                           vector<double>());
-  nh.param<vector<double>>("camera/dist_coeffs", dist_coeffs, vector<double>());
-  nh.param<bool>("calib/use_rough_calib", use_rough_calib, false);
-  nh.param<string>("calib/calib_config_file", calib_config_file, "");
+    result_path = yaml["common"]["result_path"].as<string>();
+    data_num = yaml["common"]["data_num"].as<int>();
+
+    camera_matrix = yaml["camera"]["camera_matrix"].as<vector<double>>();
+    dist_coeffs = yaml["camera"]["dist_coeffs"].as<vector<double>>();
+
+    use_rough_calib = yaml["calib"]["use_rough_calib"].as<bool>();
+    calib_config_file = yaml["calib"]["calib_config_file"].as<string>();
+  }
+  catch (...)
+  {
+    LOG(ERROR) << "bad conversion";
+    return false;
+  }
 
   std::vector<Calibration> calibs;
+  std::vector<std::string> pcd_files, image_files;
+
   for (size_t i = 0; i < data_num; i++) {
     string image_file, pcd_file = "";
     image_file = image_path + "/" + std::to_string(i) + ".bmp";
     pcd_file = pcd_path + "/" + std::to_string(i) + ".pcd";
+    
+    image_files.push_back(image_file);
+    pcd_files.push_back(pcd_file);
+
     Calibration single_calib(image_file, pcd_file, calib_config_file);
     single_calib.fx_ = camera_matrix[0];
     single_calib.cx_ = camera_matrix[2];
@@ -234,7 +97,7 @@ int main(int argc, char **argv) {
   std::vector<PnPData> pnp_list;
   std::vector<VPnPData> vpnp_list;
 
-  ROS_INFO_STREAM("Finish prepare!");
+  printf("Finish prepare!\n");
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
   inner << calibs[0].fx_, 0.0, calibs[0].cx_, 0.0, calibs[0].fy_, calibs[0].cy_,
@@ -318,7 +181,7 @@ int main(int argc, char **argv) {
       for (size_t i = 0; i < data_num; i++) {
         for (auto val : vpnp_list_vect[i]) {
           ceres::CostFunction *cost_function;
-          cost_function = vpnp_calib::Create(val);
+          cost_function = vpnp_calib::Create(val, inner, distor);
           problem.AddResidualBlock(cost_function, NULL, ext, ext + 4);
         }
       }
@@ -363,7 +226,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  ros::Rate loop(0.5);
+  ////ros::Rate loop(0.5);
   // roughCalib(calibra, calib_params, DEG2RAD(0.01), 20);
 
   R = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
@@ -388,18 +251,79 @@ int main(int argc, char **argv) {
   // ","
   //         << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
   //         << std::endl;
-  while (ros::ok()) {
-    sensor_msgs::PointCloud2 pub_cloud;
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr rgb_cloud(
-        new pcl::PointCloud<pcl::PointXYZRGB>);
-    calibs[0].colorCloud(calib_params, 5, calibs[0].image_,
-                         calibs[0].raw_lidar_cloud_, rgb_cloud);
-    pcl::toROSMsg(*rgb_cloud, pub_cloud);
-    pub_cloud.header.frame_id = "livox";
-    calibs[0].rgb_cloud_pub_.publish(pub_cloud);
-    std::cout << "push enter to publish again" << std::endl;
-    getchar();
-    /* code */
+
+  for (size_t i = 0; i < calibs.size(); i++)
+  {
+    pcl::PointCloud<pcl::PointXYZRGBL>::Ptr rgb_cloud_res(new pcl::PointCloud<pcl::PointXYZRGBL>);
+    calibs[0].colorCloud(calib_params, 5, calibs[i].image_, calibs[i].raw_lidar_cloud_, rgb_cloud_res);
+
+    auto fs_pcd = boost::filesystem::path(pcd_files[i]);
+    string str_dir = fs_pcd.parent_path().string();
+    string str_filename = fs_pcd.filename().string() + "-rgb";
+    string out_pcd = str_dir + "/" + str_filename + ".pcd";
+    pcl::io::savePCDFileBinaryCompressed(out_pcd, *rgb_cloud_res);
   }
+
+  std::cout << "finish" << std::endl;
+  getchar();
+
   return 0;
+}
+
+
+void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params,
+                double search_resolution, int max_iter) {
+  float match_dis = 25;
+  Eigen::Vector3d fix_adjust_euler(0, 0, 0);
+  for (int n = 0; n < 2; n++)
+    for (int round = 0; round < 3; round++) {
+      Eigen::Matrix3d rot;
+      rot = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
+            Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
+            Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
+      // std::cout << "init rot" << rot << std::endl;
+      float min_cost = 1000;
+      for (int iter = 0; iter < max_iter; iter++) {
+        Eigen::Vector3d adjust_euler = fix_adjust_euler;
+        adjust_euler[round] = fix_adjust_euler[round] +
+                              pow(-1, iter) * int(iter / 2) * search_resolution;
+        Eigen::Matrix3d adjust_rotation_matrix;
+        adjust_rotation_matrix =
+            Eigen::AngleAxisd(adjust_euler[0], Eigen::Vector3d::UnitZ()) *
+            Eigen::AngleAxisd(adjust_euler[1], Eigen::Vector3d::UnitY()) *
+            Eigen::AngleAxisd(adjust_euler[2], Eigen::Vector3d::UnitX());
+        Eigen::Matrix3d test_rot = rot * adjust_rotation_matrix;
+        // std::cout << "adjust_rotation_matrix " << adjust_rotation_matrix
+        //           << std::endl;
+        Eigen::Vector3d test_euler = test_rot.eulerAngles(2, 1, 0);
+        // std::cout << "test euler: " << test_euler << std::endl;
+        Vector6d test_params;
+        test_params << test_euler[0], test_euler[1], test_euler[2],
+            calib_params[3], calib_params[4], calib_params[5];
+        std::vector<VPnPData> pnp_list;
+        for (size_t i = 0; i < calibs.size(); i++)
+          calibs[i].buildVPnp(test_params, match_dis, false,
+                              calibs[i].rgb_egde_cloud_,
+                              calibs[i].plane_line_cloud_, pnp_list);
+        float cost = 0;
+        for (size_t i = 0; i < calibs.size(); i++)
+          cost += (calibs[i].plane_line_cloud_->size() - pnp_list.size()) *
+                  1.0 / calibs[i].plane_line_cloud_->size();
+        std::cout << "n " << n << " round " << round << " iter " << iter
+                  << " cost:" << cost << std::endl;
+        if (cost < min_cost) {
+          std::cout << "Rough calibration min cost:" << cost << std::endl;
+          min_cost = cost;
+          calib_params[0] = test_params[0];
+          calib_params[1] = test_params[1];
+          calib_params[2] = test_params[2];
+          calibs[0].buildVPnp(calib_params, match_dis, true,
+                              calibs[0].rgb_egde_cloud_,
+                              calibs[0].plane_line_cloud_, pnp_list);
+          cv::Mat projection_img = calibs[0].getProjectionImg(calib_params);
+          cv::imshow("Rough Optimization", projection_img);
+          cv::waitKey(50);
+        }
+      }
+    }
 }

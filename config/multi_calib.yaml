@@ -1,8 +1,8 @@
 # Data path. adjust them!
 common:
-    image_path:  "/home/ycj/data/calib/image/old"
-    pcd_path:  "/home/ycj/data/calib/pcd/old"
-    result_path:  "/home/ycj/data/calib/extrinsic.txt"
+    image_path:  "/home/w/下载/livox_camera_calib/calib_dataset/multi_scene_calibration/image"
+    pcd_path:  "/home/w/下载/livox_camera_calib/calib_dataset/multi_scene_calibration/pcd"
+    result_path:  "/home/w/下载/livox_camera_calib/calib_dataset/multi_scene_calibration/extrinsic.txt"
     data_num: 3
 # Camera Parameters. Adjust them!
 camera:
@@ -13,5 +13,5 @@ camera:
 
 # Calibration Parameters.!
 calib:
-    calib_config_file: "/home/ycj/catkin_ws/src/livox_camera_calib/config/config_outdoor.yaml"
-    use_rough_calib: true # set true if your initial_extrinsic is bad
+    calib_config_file: "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/config_outdoor.yaml"
+    use_rough_calib: false # set true if your initial_extrinsic is bad

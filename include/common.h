@@ -1,7 +1,7 @@
 #ifndef LIDAR_CAMERA_COMMON_H
 #define LIDAR_CAMERA_COMMON_H
 #include <Eigen/Core>
-#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
 #include <pcl/common/io.h>
 #include <stdio.h>
 #include <string>
@@ -119,7 +119,7 @@ template <class T> void calc(T matrix[4][5], Eigen::Vector3d &solution) {
 }
 
 // Similar with PCL voxelgrid filter
-void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
+static void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size) {
   int intensity = rand() % 255;
   if (voxel_size < 0.01) {
@@ -171,7 +171,7 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
   }
 }
 
-void rgb2grey(const cv::Mat &rgb_image, cv::Mat &grey_img) {
+static void rgb2grey(const cv::Mat &rgb_image, cv::Mat &grey_img) {
   for (int x = 0; x < rgb_image.cols; x++) {
     for (int y = 0; y < rgb_image.rows; y++) {
       grey_img.at<uchar>(y, x) = 1.0 / 3.0 * rgb_image.at<cv::Vec3b>(y, x)[0] +
@@ -181,7 +181,7 @@ void rgb2grey(const cv::Mat &rgb_image, cv::Mat &grey_img) {
   }
 }
 
-void mapJet(double v, double vmin, double vmax, uint8_t &r, uint8_t &g,
+static void mapJet(double v, double vmin, double vmax, uint8_t &r, uint8_t &g,
             uint8_t &b) {
   r = 255;
   g = 255;
