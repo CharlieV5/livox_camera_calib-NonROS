@@ -37,10 +37,11 @@ Eigen::Vector3d transation;
 
 void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params, double search_resolution, int max_iter);
 
-int main(int argc, char **argv) {
-    
+int main(int argc, char **argv)
+{
+
   string yaml_file = argv[1];
-  //string yaml_file = "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/multi_calib.yaml";
+  // string yaml_file = "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/multi_calib.yaml";
   auto yaml = YAML::LoadFile(yaml_file);
   try
   {
@@ -65,11 +66,12 @@ int main(int argc, char **argv) {
   std::vector<Calibration> calibs;
   std::vector<std::string> pcd_files, image_files;
 
-  for (size_t i = 0; i < data_num; i++) {
+  for (size_t i = 0; i < data_num; i++)
+  {
     string image_file, pcd_file = "";
     image_file = image_path + "/" + std::to_string(i) + ".bmp";
     pcd_file = pcd_path + "/" + std::to_string(i) + ".pcd";
-    
+
     image_files.push_back(image_file);
     pcd_files.push_back(pcd_file);
 
@@ -94,9 +96,6 @@ int main(int argc, char **argv) {
   calib_params << init_euler_angle(0), init_euler_angle(1), init_euler_angle(2),
       init_transation(0), init_transation(1), init_transation(2);
 
-  std::vector<PnPData> pnp_list;
-  std::vector<VPnPData> vpnp_list;
-
   printf("Finish prepare!\n");
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
@@ -109,7 +108,7 @@ int main(int argc, char **argv) {
             << calibs[0].init_rotation_matrix_ << std::endl;
   std::cout << "Initial translation:"
             << calibs[0].init_translation_vector_.transpose() << std::endl;
-  bool use_vpnp = true;
+
   Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
   calib_params[0] = euler[0];
   calib_params[1] = euler[1];
@@ -120,7 +119,8 @@ int main(int argc, char **argv) {
   cv::Mat init_img = calibs[0].getProjectionImg(calib_params);
   cv::imshow("Initial extrinsic", init_img);
   cv::waitKey(1000);
-  if (use_rough_calib) {
+  if (use_rough_calib)
+  {
     roughCalib(calibs, calib_params, DEG2RAD(0.2), 40);
   }
   cv::Mat test_img = calibs[0].getProjectionImg(calib_params);
@@ -134,13 +134,16 @@ int main(int argc, char **argv) {
   bool opt_flag = true;
 
   // Iteratively reducve the matching distance threshold
-  for (dis_threshold = 30; dis_threshold > 10; dis_threshold -= 1) {
+  for (dis_threshold = 30; dis_threshold > 10; dis_threshold -= 1)
+  {
     // For each distance, do twice optimization
-    for (int cnt = 0; cnt < 2; cnt++) {
+    for (int cnt = 0; cnt < 2; cnt++)
+    {
 
       std::vector<std::vector<VPnPData>> vpnp_list_vect;
       int vpnp_size = 0;
-      for (size_t i = 0; i < data_num; i++) {
+      for (size_t i = 0; i < data_num; i++)
+      {
         std::vector<VPnPData> vpnp_list;
         calibs[i].buildVPnp(calib_params, dis_threshold, true,
                             calibs[i].rgb_egde_cloud_,
@@ -178,8 +181,10 @@ int main(int argc, char **argv) {
 
       problem.AddParameterBlock(ext, 4, q_parameterization);
       problem.AddParameterBlock(ext + 4, 3);
-      for (size_t i = 0; i < data_num; i++) {
-        for (auto val : vpnp_list_vect[i]) {
+      for (size_t i = 0; i < data_num; i++)
+      {
+        for (auto val : vpnp_list_vect[i])
+        {
           ceres::CostFunction *cost_function;
           cost_function = vpnp_calib::Create(val, inner, distor);
           problem.AddResidualBlock(cost_function, NULL, ext, ext + 4);
@@ -221,7 +226,8 @@ int main(int argc, char **argv) {
       //   break;
       // }
     }
-    if (!opt_flag) {
+    if (!opt_flag)
+    {
       break;
     }
   }
@@ -233,7 +239,8 @@ int main(int argc, char **argv) {
       Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
   std::ofstream outfile(result_path);
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++)
+  {
     outfile << R(i, 0) << "," << R(i, 1) << "," << R(i, 2) << "," << T[i]
             << std::endl;
   }
@@ -257,7 +264,7 @@ int main(int argc, char **argv) {
     pcl::PointCloud<pcl::PointXYZRGBL>::Ptr rgb_cloud_res(new pcl::PointCloud<pcl::PointXYZRGBL>);
     calibs[0].colorCloud(calib_params, 5, calibs[i].image_, calibs[i].raw_lidar_cloud_, rgb_cloud_res);
 
-    auto fs_pcd = boost::filesystem::path(pcd_files[i]);
+    auto fs_pcd = std::filesystem::path(pcd_files[i]);
     string str_dir = fs_pcd.parent_path().string();
     string str_filename = fs_pcd.filename().string() + "-rgb";
     string out_pcd = str_dir + "/" + str_filename + ".pcd";
@@ -270,20 +277,22 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-
 void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params,
-                double search_resolution, int max_iter) {
+                double search_resolution, int max_iter)
+{
   float match_dis = 25;
   Eigen::Vector3d fix_adjust_euler(0, 0, 0);
   for (int n = 0; n < 2; n++)
-    for (int round = 0; round < 3; round++) {
+    for (int round = 0; round < 3; round++)
+    {
       Eigen::Matrix3d rot;
       rot = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
             Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
             Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
       // std::cout << "init rot" << rot << std::endl;
       float min_cost = 1000;
-      for (int iter = 0; iter < max_iter; iter++) {
+      for (int iter = 0; iter < max_iter; iter++)
+      {
         Eigen::Vector3d adjust_euler = fix_adjust_euler;
         adjust_euler[round] = fix_adjust_euler[round] +
                               pow(-1, iter) * int(iter / 2) * search_resolution;
@@ -311,7 +320,8 @@ void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params,
                   1.0 / calibs[i].plane_line_cloud_->size();
         std::cout << "n " << n << " round " << round << " iter " << iter
                   << " cost:" << cost << std::endl;
-        if (cost < min_cost) {
+        if (cost < min_cost)
+        {
           std::cout << "Rough calibration min cost:" << cost << std::endl;
           min_cost = cost;
           calib_params[0] = test_params[0];

@@ -1,17 +1,16 @@
 # Data path. adjust them!
 common:
-    image_file: "/home/w/下载/livox_camera_calib/calib_dataset/single_scene_calibration/2.png"
-    pcd_file: "/home/w/下载/livox_camera_calib/calib_dataset/single_scene_calibration/2.pcd"
-    result_file: "/home/w/下载/livox_camera_calib/calib_dataset/single_scene_calibration/extrinsic.txt"
+    image_file: "E:/Downloads/calib_dataset/single_scene_calibration/2.png"
+    pcd_file: "E:/Downloads/calib_dataset/single_scene_calibration/2.pcd"
+    result_file: "E:/Downloads/calib_dataset/single_scene_calibration/extrinsic.txt"
 
 # Camera Parameters. Adjust them!
 camera:
-    camera_matrix: [1364.45, 0.0,      958.327,
-                0.0,     1366.46,  535.074,
-                0.0,     0.0,      1.0     ]
+    model: "pinhole"
+    camera_matrix: [1364.45, 0.0, 958.327, 0.0, 1366.46, 535.074, 0.0, 0.0, 1.0]
     dist_coeffs: [0.0958277, -0.198233, -0.000147133, -0.000430056, 0.000000]
 
 # Calibration Parameters.!
 calib:
-    calib_config_file: "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/config_outdoor.yaml"
-    use_rough_calib: true # set true if your initial_extrinsic is bad
+    calib_config_file: "C:/Users/Charlie/livox_camera_calib-NonROS/config/config_outdoor.yaml"
+    use_rough_calib: false # set true if your initial_extrinsic is bad
