@@ -1,5 +1,7 @@
 #include "Calibration.h"
 #include <yaml-cpp/yaml.h>
+#include <Eigen/Dense>
+#include <opencv2/core/eigen.hpp>
 
 Calibration::Calibration(const std::string &image_file,
 						 const std::string &pcd_file,
@@ -10,8 +12,8 @@ Calibration::Calibration(const std::string &image_file,
 	loadCalibConfig(calib_config_file);
 
 	loadCameraConfig(camera_yaml);
-
-	image_ = cv::imread(image_file, cv::IMREAD_UNCHANGED);
+	image_path_ = image_file;
+	image_ = cv::imread(image_file);
 	if (!image_.data)
 	{
 		std::string msg = "Can not load image from " + image_file + "\n";
@@ -48,8 +50,7 @@ Calibration::Calibration(const std::string &image_file,
 					  std::to_string(rgb_egde_cloud_->size()) + "\n";
 	printf(msg.c_str());
 
-	raw_lidar_cloud_ =
-		pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+	raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
 	printf("Loading point cloud from pcd file.\n");
 	if (!pcl::io::loadPCDFile(pcd_file, *raw_lidar_cloud_))
 	{
@@ -65,8 +66,8 @@ Calibration::Calibration(const std::string &image_file,
 		exit(-1);
 	}
 
-	Eigen::Vector3d lwh(50, 50, 30);
-	Eigen::Vector3d origin(0, -25, -10);
+	//Eigen::Vector3d lwh(50, 50, 30);
+	//Eigen::Vector3d origin(0, -25, -10);
 	std::vector<VoxelGrid> voxel_list;
 	std::unordered_map<VOXEL_LOC, Voxel *> voxel_map;
 	initVoxel(raw_lidar_cloud_, voxel_size_, voxel_map);
@@ -148,10 +149,11 @@ bool Calibration::loadCalibConfig(const std::string &config_file)
 		printf("Sucessfully load calib config file\n");
 	}
 	fSettings["ExtrinsicMat"] >> init_extrinsic_;
-	init_rotation_matrix_ << 
-		init_extrinsic_.at<double>(0, 0), init_extrinsic_.at<double>(0, 1), init_extrinsic_.at<double>(0, 2),
-		init_extrinsic_.at<double>(1, 0), init_extrinsic_.at<double>(1, 1), init_extrinsic_.at<double>(1, 2), 
-		init_extrinsic_.at<double>(2, 0), init_extrinsic_.at<double>(2, 1), init_extrinsic_.at<double>(2, 2);
+	for (int i = 0; i < 3; i++)
+	{
+		for (int j = 0; j < 3; j++)
+		init_rotation_matrix_(i, j) = init_extrinsic_.at<double>(i, j);
+	}
 
 	init_translation_vector_ << init_extrinsic_.at<double>(0, 3), init_extrinsic_.at<double>(1, 3), init_extrinsic_.at<double>(2, 3);
 
@@ -214,22 +216,26 @@ void Calibration::colorCloud(
 			 << rotation_vector3.angle() * rotation_vector3.axis().transpose()[0],
 		 rotation_vector3.angle() * rotation_vector3.axis().transpose()[1],
 		 rotation_vector3.angle() * rotation_vector3.axis().transpose()[2]);
-	cv::Mat t_vec = (cv::Mat_<double>(3, 1) << extrinsic_params[3],
-					 extrinsic_params[4], extrinsic_params[5]);
+
+	cv::Mat t_vec = (cv::Mat_<double>(3, 1) << extrinsic_params[3], extrinsic_params[4], extrinsic_params[5]);
 	std::vector<cv::Point2f> pts_2d;
 	if (m_cam_model == 0)
 		cv::projectPoints(pts_3d, r_vec, t_vec, camera_matrix_, dist_coeffs_, pts_2d);
 	else if (m_cam_model == 1)
-		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, dist_coeffs_);
+	{
+		cv::Mat fisheye_dist_coeffs = cv::Mat::zeros(4, 1, CV_64FC1);
+		for (int i = 0; i < 4; i++)
+			fisheye_dist_coeffs.at<double>(i) = dist_coeffs_.at<double>(i);
+
+		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, fisheye_dist_coeffs);
+	}
 
 	int image_rows = rgb_img.rows;
 	int image_cols = rgb_img.cols;
-	color_cloud = pcl::PointCloud<pcl::PointXYZRGBL>::Ptr(
-		new pcl::PointCloud<pcl::PointXYZRGBL>);
+	color_cloud = pcl::PointCloud<pcl::PointXYZRGBL>::Ptr(new pcl::PointCloud<pcl::PointXYZRGBL>);
 	for (size_t i = 0; i < pts_2d.size(); i++)
 	{
-		if (pts_2d[i].x >= 0 && pts_2d[i].x < image_cols && pts_2d[i].y >= 0 &&
-			pts_2d[i].y < image_rows)
+		if (pts_2d[i].x >= 0 && pts_2d[i].x < image_cols && pts_2d[i].y >= 0 && pts_2d[i].y < image_rows)
 		{
 			cv::Scalar color =
 				rgb_img.at<cv::Vec3b>((int)pts_2d[i].y, (int)pts_2d[i].x);
@@ -276,8 +282,7 @@ void Calibration::edgeDetector(
 					 cv::CHAIN_APPROX_NONE, cv::Point(0, 0));
 	edge_img = cv::Mat::zeros(height_, width_, CV_8UC1);
 
-	edge_cloud =
-		pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+	edge_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
 	for (size_t i = 0; i < contours.size(); i++)
 	{
 		if (contours[i].size() > edge_threshold)
@@ -344,11 +349,8 @@ void Calibration::projection(
 
 	// 用3×3矩阵来传递，更加易懂
 	cv::Mat cvRot = cv::Mat::zeros(3, 3, CV_64F);
-	for (int i=0; i<3; i++)
-	{
-        for (int j=0; j<3; j++)
-            cvRot.at<double>(i, j) = rotation_matrix(i, j);
-	}
+	eigen2cv(rotation_matrix, cvRot);
+
 	cv::Mat r_vec;
 	cv::Rodrigues(cvRot, r_vec);
 
@@ -365,7 +367,14 @@ void Calibration::projection(
 	if (m_cam_model == 0)
 		cv::projectPoints(pts_3d, r_vec, t_vec, camera_matrix_, dist_coeffs_, pts_2d);
 	else if (m_cam_model == 1)
-		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, dist_coeffs_);
+	{
+		cv::Mat fisheye_dist_coeffs = cv::Mat::zeros(4, 1, CV_64FC1);
+		for (int i = 0; i < 4; i++)
+            fisheye_dist_coeffs.at<double>(i) = dist_coeffs_.at<double>(i);
+
+		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, fisheye_dist_coeffs);
+	}
+		
 
 	cv::Mat image_project = cv::Mat::zeros(height_, width_, CV_16UC1);
 	cv::Mat rgb_image_project = cv::Mat::zeros(height_, width_, CV_8UC3);
@@ -1079,8 +1088,14 @@ void Calibration::buildVPnp(
 
 	if (m_cam_model == 0)
 		cv::projectPoints(pts_3d, r_vec, t_vec, camera_matrix_, dist_coeffs_, pts_2d);
-    else if (m_cam_model == 1)
-		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, dist_coeffs_);
+	else if (m_cam_model == 1)
+	{
+		cv::Mat fisheye_dist_coeffs = cv::Mat::zeros(4, 1, CV_64FC1);
+		for (int i = 0; i < 4; i++)
+			fisheye_dist_coeffs.at<double>(i) = dist_coeffs_.at<double>(i);
+
+		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, fisheye_dist_coeffs);
+	}
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr line_edge_cloud_2d(new pcl::PointCloud<pcl::PointXYZ>);
 	std::vector<int> line_edge_cloud_2d_number;
@@ -1113,6 +1128,14 @@ void Calibration::buildVPnp(
 	{
 		cv::Mat residual_img = getConnectImg(dis_threshold, cam_edge_cloud_2d, line_edge_cloud_2d);
 		cv::imshow("residual", residual_img);
+
+		fs::path dir = fs::path(image_path_).parent_path();
+		fs::path new_dir(dir.string() + "/result");
+		fs::create_directories(new_dir);
+
+		string save_path = new_dir.string() + "/residual.png";
+		cv::imwrite(save_path, residual_img);
+
 		cv::waitKey(100);
 	}
 
@@ -1272,7 +1295,13 @@ void Calibration::buildPnp(
 	if (m_cam_model == 0)
 		cv::projectPoints(pts_3d, r_vec, t_vec, camera_matrix_, dist_coeffs_, pts_2d);
     else if (m_cam_model == 1)
-		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, dist_coeffs_);
+	{
+		cv::Mat fisheye_dist_coeffs = cv::Mat::zeros(4, 1, CV_64FC1);
+		for (int i = 0; i < 4; i++)
+			fisheye_dist_coeffs.at<double>(i) = dist_coeffs_.at<double>(i);
+
+		cv::fisheye::projectPoints(pts_3d, pts_2d, r_vec, t_vec, camera_matrix_, fisheye_dist_coeffs);
+	}
 
 	pcl::PointCloud<pcl::PointXYZ>::Ptr line_edge_cloud_2d(
 		new pcl::PointCloud<pcl::PointXYZ>);

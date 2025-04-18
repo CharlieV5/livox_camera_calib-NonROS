@@ -22,12 +22,14 @@ int main(int argc, char** argv)
 	string cam_intrinsic_yaml_file = argv[1];
 	string calib_config_file = argv[2];
 
+	fs::path dir = fs::path(cam_intrinsic_yaml_file).parent_path();	
+	fs::path new_dir(dir.string() + "/result");
+	fs::create_directories(new_dir);
+
 	// Data path
 	string image_file;
 	string pcd_file;
 	string result_file;
-
-	fs::path dir = fs::path(cam_intrinsic_yaml_file).parent_path();
 
 	std::vector<fs::path> files = get_files_by_extensions(dir.string(), {"png", "pcd"});
 	if (files.size() != 2)
@@ -75,11 +77,7 @@ int main(int argc, char** argv)
 	printf("Finish prepare!\n");
 	Eigen::Matrix3d R;
 	Eigen::Vector3d T;
-	for (int i=0; i<3; i++)
-	{
-		for (int j = 0; j < 3; j++)
-		inner(i,j) = calib.camera_matrix_.at<double>(i, j);
-	}
+	cv2eigen(calib.camera_matrix_, inner);
 
 	for (int i = 0; i < 4; i++)
 	{
@@ -103,6 +101,8 @@ int main(int argc, char** argv)
 
 	cv::Mat init_img = calib.getProjectionImg(calib_params);
 	cv::imshow("Initial extrinsic", init_img);
+	string save_path = new_dir.string() + "/init_extrinsic.png";
+	cv::imwrite(save_path, init_img);
 
 	cv::waitKey(1000);
 
@@ -112,6 +112,9 @@ int main(int argc, char** argv)
 	}
 	cv::Mat test_img = calib.getProjectionImg(calib_params);
 	cv::imshow("After rough extrinsic", test_img);
+	save_path = new_dir.string() + "/After_rough_extrinsic.png";
+	cv::imwrite(save_path, test_img);
+
 	cv::waitKey(1000);
 	int iter = 0;
 	// Maximum match distance threshold: 15 pixels
@@ -143,6 +146,9 @@ int main(int argc, char** argv)
 
 			cv::Mat projection_img = calib.getProjectionImg(calib_params);
 			cv::imshow("Optimization", projection_img);
+			save_path = new_dir.string() + "/optimization.png";
+			cv::imwrite(save_path, projection_img);
+
 			cv::waitKey(100);
 			Eigen::Vector3d euler_angle(calib_params[0], calib_params[1], calib_params[2]);
 			Eigen::Matrix3d opt_init_R;
@@ -234,11 +240,7 @@ int main(int argc, char** argv)
 	outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
 	cv::Mat opt_img = calib.getProjectionImg(calib_params);
 	cv::imshow("Optimization result", opt_img);
-
-	fs::path new_dir(dir.string() + "/result");
-	fs::create_directories(new_dir);
-
-	string out_img = new_dir.string() + "/opt.png";
+	string out_img = new_dir.string() + "/Optimization_result.png";
 	cv::imwrite(out_img, opt_img);
 	cv::waitKey(1000);
 	Eigen::Matrix3d init_rotation;

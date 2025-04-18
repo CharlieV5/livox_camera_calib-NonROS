@@ -113,7 +113,7 @@ public:
 	int rgb_edge_minLen_ = 200;
 	int rgb_canny_threshold_ = 20;
 	int min_depth_ = 2.5;
-	int max_depth_ = 50;
+	int max_depth_ = 80;
 	int plane_max_size_ = 5;
 	float detect_line_threshold_ = 0.02;
 	int line_number_ = 0;
@@ -146,6 +146,7 @@ public:
 	float min_line_dis_threshold_ = 0.03;
 	float max_line_dis_threshold_ = 0.06;
 
+	string image_path_;
 	cv::Mat rgb_image_;
 	cv::Mat image_;
 	cv::Mat grey_image_;
