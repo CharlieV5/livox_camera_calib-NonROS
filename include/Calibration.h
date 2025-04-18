@@ -129,6 +129,10 @@ public:
 
 	// 初始外参
 	cv::Mat init_extrinsic_;
+	// 初始旋转矩阵
+	Eigen::Matrix3d init_rotation_matrix_;
+	// 初始平移向量
+	Eigen::Vector3d init_translation_vector_;
 
 	int is_use_custom_msg_;
 	float voxel_size_ = 1.0;
@@ -148,10 +152,6 @@ public:
 	// 裁剪后的灰度图像
 	cv::Mat cut_grey_image_;
 
-	// 初始旋转矩阵
-	Eigen::Matrix3d init_rotation_matrix_;
-	// 初始平移向量
-	Eigen::Vector3d init_translation_vector_;
 
 	// 存储从pcd/bag处获取的原始点云
 	pcl::PointCloud<pcl::PointXYZI>::Ptr raw_lidar_cloud_;

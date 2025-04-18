@@ -19,7 +19,7 @@ void roughCalib(Calibration& calib, Vector6d& calib_params, double search_resolu
 
 int main(int argc, char** argv)
 {
-	string cam_int_yaml_file = argv[1];
+	string cam_intrinsic_yaml_file = argv[1];
 	string calib_config_file = argv[2];
 
 	// Data path
@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 	string pcd_file;
 	string result_file;
 
-	fs::path dir = fs::path(cam_int_yaml_file).parent_path();
+	fs::path dir = fs::path(cam_intrinsic_yaml_file).parent_path();
 
 	std::vector<fs::path> files = get_files_by_extensions(dir.string(), {"png", "pcd"});
 	if (files.size() != 2)
@@ -59,7 +59,7 @@ int main(int argc, char** argv)
 	auto calib_yaml = YAML::LoadFile(calib_config_file);
 	use_rough_calib = calib_yaml["use_rough_calib"].as<bool>();
 
-	Calibration calib(image_file, pcd_file, calib_config_file, cam_int_yaml_file);
+	Calibration calib(image_file, pcd_file, calib_config_file, cam_intrinsic_yaml_file);
 	
 	Eigen::Vector3d init_euler_angle = calib.init_rotation_matrix_.eulerAngles(2, 1, 0);
 	Eigen::Vector3d init_transation = calib.init_translation_vector_;

@@ -322,14 +322,17 @@ void Calibration::projection(
 {
 	std::vector<cv::Point3f> pts_3d;
 	std::vector<float> intensity_list;
-	Eigen::AngleAxisd rotation_vector3;
+	Eigen::AngleAxisd rotation_vector3; 
 	rotation_vector3 =
 		Eigen::AngleAxisd(extrinsic_params[0], Eigen::Vector3d::UnitZ()) *
 		Eigen::AngleAxisd(extrinsic_params[1], Eigen::Vector3d::UnitY()) *
 		Eigen::AngleAxisd(extrinsic_params[2], Eigen::Vector3d::UnitX());
+
+	Eigen::Matrix3d rotation_matrix = rotation_vector3.toRotationMatrix();
+
 	for (size_t i = 0; i < lidar_cloud->size(); i++)
 	{
-		pcl::PointXYZI point_3d = lidar_cloud->points[i];
+		const pcl::PointXYZI& point_3d = lidar_cloud->points[i];
 		float depth =
 			sqrt(pow(point_3d.x, 2) + pow(point_3d.y, 2) + pow(point_3d.z, 2));
 		if (depth > min_depth_ && depth < max_depth_)
@@ -339,18 +342,24 @@ void Calibration::projection(
 		}
 	}
 
-	//cv::Mat camera_matrix =
-	//	(cv::Mat_<double>(3, 3) << fx_, 0.0, cx_, 0.0, fy_, cy_, 0.0, 0.0, 1.0);
-	//cv::Mat distortion_coeff =
-	//	(cv::Mat_<double>(1, 5) << k1_, k2_, p1_, p2_, k3_);
+	// 用3×3矩阵来传递，更加易懂
+	cv::Mat cvRot = cv::Mat::zeros(3, 3, CV_64F);
+	for (int i=0; i<3; i++)
+	{
+        for (int j=0; j<3; j++)
+            cvRot.at<double>(i, j) = rotation_matrix(i, j);
+	}
+	cv::Mat r_vec;
+	cv::Rodrigues(cvRot, r_vec);
 
-	cv::Mat r_vec =
-		(cv::Mat_<double>(3, 1)
-			 << rotation_vector3.angle() * rotation_vector3.axis().transpose()[0],
-		 rotation_vector3.angle() * rotation_vector3.axis().transpose()[1],
-		 rotation_vector3.angle() * rotation_vector3.axis().transpose()[2]);
-	cv::Mat t_vec = (cv::Mat_<double>(3, 1) << extrinsic_params[3],
-					 extrinsic_params[4], extrinsic_params[5]);
+	//cv::Mat r_vec = (cv::Mat_<double>(3, 1)
+	//			  << rotation_vector3.angle() * rotation_vector3.axis().transpose()[0],
+	//				 rotation_vector3.angle() * rotation_vector3.axis().transpose()[1],
+	//				 rotation_vector3.angle() * rotation_vector3.axis().transpose()[2]);
+
+	cv::Mat t_vec = (cv::Mat_<double>(3, 1) << extrinsic_params[3], extrinsic_params[4], extrinsic_params[5]);
+
+					 
 	// project 3d-points into image view
 	std::vector<cv::Point2f> pts_2d;
 	if (m_cam_model == 0)

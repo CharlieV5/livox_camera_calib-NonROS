@@ -40,28 +40,31 @@ void roughCalib(std::vector<Calibration> &calibs, Vector6d &calib_params, double
 int main(int argc, char **argv)
 {
 
-  string yaml_file = argv[1];
+  string cam_intrinsic_yaml_file = argv[1];
+  string calib_config_file = argv[2];
+
+  // string yaml_file = argv[1];
   // string yaml_file = "/media/w/WData/Code/Catkin-WS/livox_camera_calib/src/livox_camera_calib/config/multi_calib.yaml";
-  auto yaml = YAML::LoadFile(yaml_file);
-  try
-  {
-    image_path = yaml["common"]["image_path"].as<string>();
-    pcd_path = yaml["common"]["pcd_path"].as<string>();
-
-    result_path = yaml["common"]["result_path"].as<string>();
-    data_num = yaml["common"]["data_num"].as<int>();
-
-    camera_matrix = yaml["camera"]["camera_matrix"].as<vector<double>>();
-    dist_coeffs = yaml["camera"]["dist_coeffs"].as<vector<double>>();
-
-    use_rough_calib = yaml["calib"]["use_rough_calib"].as<bool>();
-    calib_config_file = yaml["calib"]["calib_config_file"].as<string>();
-  }
-  catch (...)
-  {
-    LOG(ERROR) << "bad conversion";
-    return false;
-  }
+//   auto yaml = YAML::LoadFile(yaml_file);
+//   try
+//   {
+//     image_path = yaml["common"]["image_path"].as<string>();
+//     pcd_path = yaml["common"]["pcd_path"].as<string>();
+// 
+//     result_path = yaml["common"]["result_path"].as<string>();
+//     data_num = yaml["common"]["data_num"].as<int>();
+// 
+//     camera_matrix = yaml["camera"]["camera_matrix"].as<vector<double>>();
+//     dist_coeffs = yaml["camera"]["dist_coeffs"].as<vector<double>>();
+// 
+//     use_rough_calib = yaml["calib"]["use_rough_calib"].as<bool>();
+//     calib_config_file = yaml["calib"]["calib_config_file"].as<string>();
+//   }
+//   catch (...)
+//   {
+//     LOG(ERROR) << "bad conversion";
+//     return false;
+//   }
 
   std::vector<Calibration> calibs;
   std::vector<std::string> pcd_files, image_files;
@@ -75,16 +78,16 @@ int main(int argc, char **argv)
     image_files.push_back(image_file);
     pcd_files.push_back(pcd_file);
 
-    Calibration single_calib(image_file, pcd_file, calib_config_file);
-    single_calib.fx_ = camera_matrix[0];
-    single_calib.cx_ = camera_matrix[2];
-    single_calib.fy_ = camera_matrix[4];
-    single_calib.cy_ = camera_matrix[5];
-    single_calib.k1_ = dist_coeffs[0];
-    single_calib.k2_ = dist_coeffs[1];
-    single_calib.p1_ = dist_coeffs[2];
-    single_calib.p2_ = dist_coeffs[3];
-    single_calib.k3_ = dist_coeffs[4];
+    Calibration single_calib(image_file, pcd_file, calib_config_file, cam_intrinsic_yaml_file);
+    // single_calib.fx_ = camera_matrix[0];
+    // single_calib.cx_ = camera_matrix[2];
+    // single_calib.fy_ = camera_matrix[4];
+    // single_calib.cy_ = camera_matrix[5];
+    // single_calib.k1_ = dist_coeffs[0];
+    // single_calib.k2_ = dist_coeffs[1];
+    // single_calib.p1_ = dist_coeffs[2];
+    // single_calib.p2_ = dist_coeffs[3];
+    // single_calib.k3_ = dist_coeffs[4];
     calibs.push_back(single_calib);
   }
 
@@ -99,9 +102,17 @@ int main(int argc, char **argv)
   printf("Finish prepare!\n");
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
-  inner << calibs[0].fx_, 0.0, calibs[0].cx_, 0.0, calibs[0].fy_, calibs[0].cy_,
-      0.0, 0.0, 1.0;
-  distor << calibs[0].k1_, calibs[0].k2_, calibs[0].p1_, calibs[0].p2_;
+  for (int i = 0; i < 3; i++)
+  {
+    for (int j = 0; j < 3; j++)
+      inner(i, j) = calibs[0].camera_matrix_.at<double>(i, j);
+  }
+
+  for (int i = 0; i < 4; i++)
+  {
+    distor(i, 0) = calibs[0].dist_coeffs_.at<double>(i, 0);
+  }
+
   R = calibs[0].init_rotation_matrix_;
   T = calibs[0].init_translation_vector_;
   std::cout << "Initial rotation matrix:" << std::endl
